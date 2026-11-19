@@ -1,0 +1,10 @@
+Minecraft modpack launcher, full plan (from Menma via Claude chat). Goal: friends get my exact Prism setup: pick a pack, Update, Play. Normal Microsoft login only, no offline or nickname mode.
+
+1) Packs from my Prism: read all my Prism instances (all 4, e.g. the one with Dweller's horror mod) from a COPY. Never modify or delete my originals. NEVER copy accounts.json or any login tokens. Each instance becomes a packwiz pack (mods with versions, hashes and Modrinth/CurseForge links, plus configs), hosted on GitHub. If a mod blocks outside downloads, use its Modrinth version, else the updater shows a one-time link.
+2) My publish flow: change mods or make a new instance in Prism, then one Publish command, and it updates or appears for friends.
+3) Friends' side: our small Rust launcher (a few MB) is the UI; a portable Prism runs hidden behind it and does the actual launching (packwiz-installer as pre-launch). Pack list like Prism's instance list, Update and Play, launcher self-update, auto Java 21, auto RAM per PC, adds my server to their multiplayer list, crash-log copy button. No code-signing cert for now.
+4) Skins only on my server: a client skin mod in the pack that loads skins from my own skin store (CustomSkinLoader-type) plus a small skin store on my PC; the launcher's Change skin button uploads a PNG there. Their real account skins stay untouched.
+5) Speed and graphics: Distant Horizons, shaders and speed mods (Sodium-style renderer, ModernFix, FerriteCore or equivalents). Presets Low/Medium/High, auto-picked from each PC's RAM and GPU; Distant Horizons and shaders off on Low. FIRST check Forge 1.21.1 vs NeoForge: if my mods exist on NeoForge, recommend switching (better Sodium/Iris support), and ask me before switching.
+6) Hosting: server on my PC with a playit.gg tunnel, so friends join with a simple address and install nothing extra.
+
+Order: get it playable first (step 1 + packwiz + playit.gg), then the Rust launcher, skins, presets. Test each step for real and report one line per step.

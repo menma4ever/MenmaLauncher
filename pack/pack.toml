@@ -1,0 +1,13 @@
+name = "Menma"
+author = "Menma"
+version = "0.1.0"
+pack-format = "packwiz:1.1.0"
+
+[index]
+file = "index.toml"
+hash-format = "sha256"
+hash = "2ce676b1da0de24f7e817f561a60aab126598090a150798b131af39f18c7b19b"
+
+[versions]
+minecraft = "1.21.1"
+neoforge = "21.1.267"
