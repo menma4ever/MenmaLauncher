@@ -3,3 +3,5 @@ tools/
 test/
 *.log
 local/
+launcher/target/
+test-demo/
