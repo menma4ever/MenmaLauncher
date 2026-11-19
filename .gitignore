@@ -2,3 +2,4 @@ server/
 tools/
 test/
 *.log
+local/
