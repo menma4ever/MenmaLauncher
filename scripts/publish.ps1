@@ -12,9 +12,16 @@ try {
 } finally { Pop-Location }
 
 # Friends import this zip into Prism once; after that every launch syncs automatically.
+# Rebuilt only when the instance template changes, so the zip doesn't churn on every publish.
 $zip = Join-Path $root "dist\Menma-Prism.zip"
-if (Test-Path $zip) { Remove-Item $zip }
-Compress-Archive -Path (Join-Path $root "dist\friend-instance\*") -DestinationPath $zip
+$src = Join-Path $root "dist\friend-instance"
+$newest = (Get-ChildItem $src -Recurse -File | Measure-Object LastWriteTime -Maximum).Maximum
+if (-not (Test-Path $zip) -or (Get-Item $zip).LastWriteTime -lt $newest) {
+    if (Test-Path $zip) { Remove-Item $zip }
+    # Windows tar writes forward-slash zip paths, which Prism reads reliably.
+    & "$env:SystemRoot\System32\tar.exe" -a -c -f $zip -C $src instance.cfg mmc-pack.json minecraft
+    if ($LASTEXITCODE -ne 0) { throw "zip build failed" }
+}
 
 Push-Location $root
 try {
