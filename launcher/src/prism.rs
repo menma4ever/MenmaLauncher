@@ -164,11 +164,20 @@ pub fn prepare_instance(
         .join("MenmaLauncher")
         .join("tmp");
     let _ = fs::create_dir_all(&fix_dir);
-    let args = read_ini_value(&cfg, "JvmArgs").unwrap_or_default();
-    if !args.contains("jdk.net.unixdomain.tmpdir") {
-        let flag = format!("-Djdk.net.unixdomain.tmpdir={}", fix_dir.display());
-        let joined = if args.trim().is_empty() { flag } else { format!("{} {flag}", args.trim()) };
-        cfg = set_ini(&cfg, "JvmArgs", &joined);
+    let old_args = read_ini_value(&cfg, "JvmArgs").unwrap_or_default();
+    let mut flags: Vec<String> = old_args.split_whitespace().map(String::from).collect();
+    if !old_args.contains("jdk.net.unixdomain.tmpdir") {
+        flags.push(format!("-Djdk.net.unixdomain.tmpdir={}", fix_dir.display()));
+    }
+    // Distant Horizons stutters with the default G1 collector; generational ZGC
+    // (Java 21) keeps pauses tiny. Only if the player hasn't chosen a collector.
+    if !old_args.contains("GC") {
+        flags.push("-XX:+UseZGC".into());
+        flags.push("-XX:+ZGenerational".into());
+    }
+    let args = flags.join(" ");
+    if read_ini_value(&cfg, "JvmArgs").unwrap_or_default().trim() != args {
+        cfg = set_ini(&cfg, "JvmArgs", &args);
         cfg = set_ini(&cfg, "OverrideJavaArgs", "true");
     }
     // This launcher syncs the pack itself, so the packwiz pre-launch step is not needed.
@@ -272,6 +281,7 @@ mod tests {
         prepare_instance(tmp.path(), "1.21.1", Some("21.1.300")).unwrap();
         let cfg = fs::read_to_string(tmp.path().join("Menma/instance.cfg")).unwrap();
         assert_eq!(cfg.matches("jdk.net.unixdomain.tmpdir").count(), 1, "not added twice");
+        assert_eq!(cfg.matches("-XX:+UseZGC -XX:+ZGenerational").count(), 1, "ZGC added once");
         assert!(cfg.contains("OverrideJavaArgs=true"));
         let pack = fs::read_to_string(tmp.path().join("Menma/mmc-pack.json")).unwrap();
         assert!(pack.contains("21.1.300"));
