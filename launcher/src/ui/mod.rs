@@ -589,6 +589,13 @@ impl App {
                 self.play.label = "PLAY".into();
                 self.play.reform();
                 self.mascot.set(Mood::Idle, t);
+                // The game is starting: get out of the way (still in the taskbar).
+                // (Demos keep the window up for recording, unless a test asks otherwise.)
+                if (self.demo.is_none() || std::env::var_os("MENMA_TEST_MINIMIZE").is_some())
+                    && let Some(w) = &self.window
+                {
+                    w.set_minimized(true);
+                }
             }
         self.mascot.update(t, dt, &m, 76.0);
         self.scene.update(dt, t, m.inside.then_some((m.x, m.y)), night);
@@ -918,7 +925,14 @@ impl ApplicationHandler for App {
         let now = Instant::now();
         if now >= self.next_frame {
             if let Some(w) = &self.window {
-                w.request_redraw();
+                // Windows sends no redraws to a minimized window; keep the launcher
+                // working anyway (Play progress, server button) by running the frame
+                // directly. Drawing is skipped while the window has no size.
+                if w.is_minimized() == Some(true) {
+                    self.frame();
+                } else {
+                    w.request_redraw();
+                }
             }
             self.next_frame += FRAME;
             if self.next_frame < now {
