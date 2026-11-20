@@ -162,14 +162,18 @@ struct Target {
 pub fn http_agent() -> ureq::Agent {
     use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
     ureq::Agent::config_builder()
-        // Windows' own TLS (SChannel) and certificate store: no bundled crypto.
+        // rustls, trusting the Windows certificate store.
         .tls_config(
             TlsConfig::builder()
-                .provider(TlsProvider::NativeTls)
+                .provider(TlsProvider::Rustls)
                 .root_certs(RootCerts::PlatformVerifier)
                 .build(),
         )
-        .timeout_global(Some(Duration::from_secs(120)))
+        // No overall limit: big mods on slow internet must be allowed to finish.
+        // Dead connections are caught by the connect/response limits and a 10 min cap.
+        .timeout_connect(Some(Duration::from_secs(15)))
+        .timeout_recv_response(Some(Duration::from_secs(30)))
+        .timeout_recv_body(Some(Duration::from_secs(600)))
         .user_agent(concat!("MenmaLauncher/", env!("CARGO_PKG_VERSION")))
         .build()
         .into()
@@ -190,6 +194,11 @@ fn get_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, SyncError> {
         thread::sleep(Duration::from_millis(400 * (attempt as u64 + 1)));
     }
     err(format!("download failed: {url} ({last})"))
+}
+
+/// One download with a fresh agent (used by the --fetch diagnostic).
+pub fn fetch(url: &str) -> Result<Vec<u8>, SyncError> {
+    get_bytes(&http_agent(), url)
 }
 
 fn get_text(agent: &ureq::Agent, url: &str) -> Result<String, SyncError> {

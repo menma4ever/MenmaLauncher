@@ -1,0 +1,27 @@
+{
+  "version": "15.1",
+  "buildNumber": 0,
+  "loadlist": [
+    {
+      "name": "MenmaSkins",
+      "type": "Legacy",
+      "checkPNG": false,
+      "skin": "https://raw.githubusercontent.com/menma4ever/MenmaLauncher/main/skins/{USERNAME}.png",
+      "model": "auto"
+    },
+    {
+      "name": "Mojang",
+      "type": "MojangAPI"
+    }
+  ],
+  "enableTransparentSkin": true,
+  "forceLoadAllTextures": true,
+  "enableCape": true,
+  "threadPoolSize": 8,
+  "enableLogStdOut": false,
+  "cacheExpiry": 30,
+  "forceUpdateSkull": false,
+  "enableLocalProfileCache": false,
+  "enableCacheAutoClean": false,
+  "forceDisableCache": false
+}

@@ -11,6 +11,16 @@ pub const PACK_URL: &str =
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Diagnostics: download one URL and report time/size (or the error).
+    if let Some(i) = args.iter().position(|a| a == "--fetch") {
+        let url = args.get(i + 1).cloned().unwrap_or_default();
+        let t = std::time::Instant::now();
+        match sync::fetch(&url) {
+            Ok(b) => println!("ok {} bytes in {:.1}s", b.len(), t.elapsed().as_secs_f32()),
+            Err(e) => println!("error after {:.1}s: {e}", t.elapsed().as_secs_f32()),
+        }
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--sync") {
         let dest = args.get(i + 1).map(PathBuf::from).unwrap_or_else(|| {
             eprintln!("usage: --sync <folder> [--server] [--pack <url>]");

@@ -5,3 +5,5 @@ test/
 local/
 launcher/target/
 test-demo/
+test-sync*/
+*.menma-part

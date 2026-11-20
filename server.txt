@@ -1,0 +1,2 @@
+# Menma server address (read by the launcher)
+dedication-rebound.tun.ply.gg
