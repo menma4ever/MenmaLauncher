@@ -72,7 +72,7 @@ metafile = true
 
 [[files]]
 file = "mods/horror-messages.pw.toml"
-hash = "dc85c2fc22b1d62583f06e11d903a8c5b4e89277c43f528de0cecb8f8f33a674"
+hash = "c55f7bc687e9edcf07a1085095b633b9a65016d39d07ed48fdbc697352df1393"
 metafile = true
 
 [[files]]

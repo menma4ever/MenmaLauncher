@@ -1,6 +1,6 @@
 name = "Horror messages"
 filename = "slower_horror_messages_neoforge-1.0.0-neoforge-1.21.1.jar"
-side = "server"
+side = "both"
 
 [download]
 url = "https://cdn.modrinth.com/data/dxrOAhj5/versions/VW4m5lat/slower_horror_messages_neoforge-1.0.0-neoforge-1.21.1.jar"
