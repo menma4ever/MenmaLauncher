@@ -155,7 +155,7 @@ fn spawn_server_poller() -> (Receiver<ServerMsg>, Sender<String>) {
         loop {
             if last_addr_check.elapsed() > Duration::from_secs(60) {
                 last_addr_check = Instant::now();
-                if let Ok(mut r) = agent.get(SERVER_TXT).call()
+                if let Ok(mut r) = agent.get(&sync::fresh_url(&agent, SERVER_TXT)).call()
                     && r.status() == 200
                         && let Ok(s) = r.body_mut().read_to_string() {
                             // One address per line, e.g. Tailscale first, playit second.

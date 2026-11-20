@@ -196,6 +196,37 @@ fn get_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, SyncError> {
     err(format!("download failed: {url} ({last})"))
 }
 
+/// Split `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>`.
+fn github_raw_parts(url: &str) -> Option<(&str, &str, &str, &str)> {
+    let rest = url.strip_prefix("https://raw.githubusercontent.com/")?;
+    let mut it = rest.splitn(4, '/');
+    Some((it.next()?, it.next()?, it.next()?, it.next()?))
+}
+
+/// GitHub's raw file server caches a branch for up to 5 minutes, so a fresh upload
+/// can look "already up to date". Ask GitHub for the branch's latest commit and read
+/// the files at that exact commit instead (never stale, and every file in one sync
+/// comes from the same upload). Falls back to the plain URL if GitHub can't be asked.
+pub fn fresh_url(agent: &ureq::Agent, url: &str) -> String {
+    let Some((owner, repo, branch, path)) = github_raw_parts(url) else { return url.to_string() };
+    if branch.len() == 40 && branch.chars().all(|c| c.is_ascii_hexdigit()) {
+        return url.to_string(); // already a commit
+    }
+    let api = format!("https://api.github.com/repos/{owner}/{repo}/commits/{branch}");
+    let sha = agent
+        .get(&api)
+        .header("Accept", "application/vnd.github.sha")
+        .call()
+        .ok()
+        .and_then(|mut r| r.body_mut().read_to_string().ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit()));
+    match sha {
+        Some(sha) => format!("https://raw.githubusercontent.com/{owner}/{repo}/{sha}/{path}"),
+        None => url.to_string(),
+    }
+}
+
 /// One download with a fresh agent (used by the --fetch diagnostic).
 pub fn fetch(url: &str) -> Result<Vec<u8>, SyncError> {
     get_bytes(&http_agent(), url)
@@ -280,9 +311,10 @@ pub fn sync(opts: &Options, tx: &Sender<Progress>) -> Result<Summary, SyncError>
     let agent = http_agent();
     let _ = tx.send(Progress::Checking);
 
-    let pack: PackToml = toml::from_str(&get_text(&agent, &opts.pack_url)?)
+    let pack_url = fresh_url(&agent, &opts.pack_url);
+    let pack: PackToml = toml::from_str(&get_text(&agent, &pack_url)?)
         .map_err(|e| SyncError(format!("bad pack.toml: {e}")))?;
-    let base = parent_url(&opts.pack_url).to_string();
+    let base = parent_url(&pack_url).to_string();
     let index_path = safe_rel(&pack.index.file)?;
     let index_url = format!("{base}{}", encode_path(&pack.index.file));
     let index_raw = get_bytes(&agent, &index_url)?;
@@ -519,6 +551,7 @@ pub fn pack_info(pack_url: &str) -> Result<PackInfo, SyncError> {
         versions: BTreeMap<String, String>,
     }
     let agent = http_agent();
+    let pack_url = &fresh_url(&agent, pack_url);
     let pack: Head = toml::from_str(&get_text(&agent, pack_url)?)
         .map_err(|e| SyncError(format!("bad pack.toml: {e}")))?;
     let index_url = format!("{}{}", parent_url(pack_url), encode_path(&pack.index.file));
@@ -558,6 +591,13 @@ pub fn sync_print(opts: &Options) -> Result<Summary, SyncError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn github_raw_urls_are_split() {
+        let u = "https://raw.githubusercontent.com/menma4ever/MenmaLauncher/main/pack/pack.toml";
+        assert_eq!(github_raw_parts(u), Some(("menma4ever", "MenmaLauncher", "main", "pack/pack.toml")));
+        assert_eq!(github_raw_parts("http://localhost:8765/pack.toml"), None);
+    }
 
     #[test]
     fn rejects_escaping_paths() {
