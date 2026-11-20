@@ -524,8 +524,9 @@ pub fn draw_server_card(c: &mut Canvas, x: i32, y: i32, view: &ServerView, heads
     }
     if !addr.is_empty() {
         let mut a = addr.to_string();
-        if a.len() > 20 {
-            a.truncate(19);
+        // Leave room for the COPY button on the right.
+        if a.len() > 13 {
+            a.truncate(12);
             a.push('.');
         }
         c.text_sh(x + 6, y + h - 12, &a, 0x6f6a8c, 1, 1.0);

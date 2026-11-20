@@ -76,6 +76,7 @@ pub struct App {
     card: PackCard,
     mascot: Mascot,
     btn_prism: Button,
+    btn_copy: Button,
     btn_server: Button,
     btn_select: Button,
     btn_download: Button,
@@ -229,6 +230,7 @@ impl App {
             card: PackCard::new(12, 54),
             mascot: Mascot::new(),
             btn_prism: Button::new("PRISM...", 10, 218, 60, 0x6a6590),
+            btn_copy: Button::new("COPY", 352, 61, 36, 0x6a6590),
             btn_server,
             btn_select: Button::new("SELECT YOUR PRISM EXE", 110, 172, 180, GOLD),
             btn_download: Button::new("DOWNLOAD PRISM", 110, 192, 180, TEAL),
@@ -515,6 +517,11 @@ impl App {
                     self.start_play();
                 }
                 self.card.update(&m, dt);
+                self.btn_copy.visible = if self.srv_addr.is_empty() { 0.0 } else { 1.0 };
+                if self.btn_copy.update(&m, released, dt) {
+                    let msg = if copy_to_clipboard(&self.srv_addr) { "ADDRESS COPIED" } else { "COULDN'T COPY" };
+                    self.toast = Some((msg.into(), t));
+                }
                 if self.btn_prism.update(&m, released, dt) {
                     self.go(Screen::NeedPrism);
                 }
@@ -638,6 +645,7 @@ impl App {
                 }
             }
             self.btn_prism.draw(c, &m);
+            self.btn_copy.draw(c, &m);
             if self.host_dir.is_some() {
                 self.btn_server.draw(c, &m);
             }
@@ -778,6 +786,40 @@ mod tests {
     }
 }
 
+/// Put text on the Windows clipboard (for the server address).
+fn copy_to_clipboard(text: &str) -> bool {
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+        use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+        const CF_UNICODETEXT: u32 = 13;
+        let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return false;
+        }
+        EmptyClipboard();
+        let bytes = wide.len() * 2;
+        let h = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        let mut ok = false;
+        if !h.is_null() {
+            let p = GlobalLock(h) as *mut u16;
+            if !p.is_null() {
+                std::ptr::copy_nonoverlapping(wide.as_ptr(), p, wide.len());
+                GlobalUnlock(h);
+                // On success the clipboard owns the memory.
+                ok = !SetClipboardData(CF_UNICODETEXT, h as _).is_null();
+            }
+        }
+        CloseClipboard();
+        ok
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = text;
+        false
+    }
+}
+
 fn pick_exe() -> Option<PathBuf> {
     #[cfg(windows)]
     unsafe {
@@ -891,4 +933,13 @@ pub fn run(demo: Option<demo::Kind>) {
     let el = EventLoop::new().expect("event loop");
     let mut app = App::new(demo);
     let _ = el.run_app(&mut app);
+}
+
+#[cfg(test)]
+mod clipboard_test {
+    #[test]
+    #[ignore] // touches the real clipboard; run on purpose
+    fn copies_text() {
+        assert!(super::copy_to_clipboard("100.68.16.55"));
+    }
 }
