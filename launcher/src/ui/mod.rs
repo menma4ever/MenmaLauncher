@@ -102,6 +102,10 @@ pub struct App {
     demo_step: usize,
     demo_down: bool,
     pending_launch: bool,
+    /// Background mod download: None = not started, Some(false) = running, Some(true) = ready.
+    mods_ready: Option<bool>,
+    prep_rx: Option<Receiver<Result<(), String>>>,
+    prep_retry_at: f32,
 }
 
 enum HostMsg {
@@ -145,7 +149,7 @@ fn spawn_server_poller() -> (Receiver<ServerMsg>, Sender<String>) {
     });
     thread::spawn(move || {
         let agent = sync::http_agent();
-        let mut addr: Option<String> = None;
+        let mut addrs: Vec<String> = Vec::new();
         let mut last_addr_check = Instant::now() - Duration::from_secs(3600);
         loop {
             if last_addr_check.elapsed() > Duration::from_secs(60) {
@@ -153,12 +157,22 @@ fn spawn_server_poller() -> (Receiver<ServerMsg>, Sender<String>) {
                 if let Ok(mut r) = agent.get(SERVER_TXT).call()
                     && r.status() == 200
                         && let Ok(s) = r.body_mut().read_to_string() {
-                            addr = s.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#')).map(String::from);
+                            // One address per line, e.g. Tailscale first, playit second.
+                            addrs = s
+                                .lines()
+                                .map(str::trim)
+                                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                                .map(String::from)
+                                .collect();
                         }
             }
-            let msg = match &addr {
-                None => ServerMsg::NoAddress,
-                Some(a) => ServerMsg::Status { addr: a.clone(), status: server::ping(a, Duration::from_secs(4)).ok() },
+            let msg = if addrs.is_empty() {
+                ServerMsg::NoAddress
+            } else {
+                match server::ping_fastest(&addrs, Duration::from_secs(4)) {
+                    Some((a, st)) => ServerMsg::Status { addr: a, status: Some(st) },
+                    None => ServerMsg::Status { addr: addrs[addrs.len() - 1].clone(), status: None },
+                }
             };
             if tx.send(msg).is_err() {
                 return;
@@ -241,6 +255,9 @@ impl App {
             demo_step: 0,
             demo_down: false,
             pending_launch: false,
+            mods_ready: None,
+            prep_rx: None,
+            prep_retry_at: 0.0,
         }
     }
 
@@ -253,6 +270,31 @@ impl App {
             self.trans_from = Some((Canvas { w: W, h: H, px: self.canvas.px.clone() }, self.t()));
             self.screen = s;
         }
+    }
+
+    /// Download the pack's mods into the player's Prism right away, quietly, so
+    /// Play only has to double-check. Minecraft/NeoForge themselves come from Prism.
+    fn start_prep(&mut self) {
+        let Some(exe) = self.prism_exe.clone() else { return };
+        if self.demo.is_some() || self.prep_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        self.prep_rx = Some(rx);
+        self.mods_ready = Some(false);
+        let pack_url = self.pack_url.clone();
+        thread::spawn(move || {
+            let r = (|| -> Result<(), String> {
+                let info = sync::pack_info(&pack_url).map_err(|e| e.to_string())?;
+                let instances = prism::instances_dir(&prism::data_dir(&exe));
+                let prepared = prism::prepare_instance(&instances, &info.minecraft, info.neoforge.as_deref())
+                    .map_err(|e| e.to_string())?;
+                let (ptx, _prx) = mpsc::channel();
+                let opts = sync::Options { pack_url, dest: prepared.game_dir, side: sync::Side::Client, workers: 12 };
+                sync::sync(&opts, &ptx).map(|_| ()).map_err(|e| e.to_string())
+            })();
+            let _ = tx.send(r);
+        });
     }
 
     fn start_play(&mut self) {
@@ -421,6 +463,21 @@ impl App {
         let released = std::mem::take(&mut self.released);
         let m = self.mouse;
         self.poll(t);
+        if self.prep_rx.is_none() && self.mods_ready.is_none() && self.prism_exe.is_some() && t >= self.prep_retry_at {
+            self.start_prep();
+        }
+        if let Some(rx) = &self.prep_rx
+            && let Ok(r) = rx.try_recv()
+        {
+            self.prep_rx = None;
+            if r.is_ok() {
+                self.mods_ready = Some(true);
+            } else {
+                // Quietly try again in a minute; Play does a full sync anyway and shows errors.
+                self.mods_ready = None;
+                self.prep_retry_at = t + 60.0;
+            }
+        }
         while let Ok(h) = self.host_rx.try_recv() {
             match h {
                 HostMsg::Running(r) => self.host_running = r,
@@ -492,6 +549,8 @@ impl App {
                             self.config.prism_exe = Some(p.clone());
                             self.config.save();
                             self.prism_exe = Some(p);
+                            self.prep_rx = None;
+                            self.start_prep();
                             self.toast = Some(("PRISM FOUND".into(), t));
                             self.go(Screen::Main);
                         } else {
@@ -538,7 +597,11 @@ impl App {
             let (l1, l2) = match &self.pack {
                 Some(p) => (
                     format!("{} NEOFORGE", p.minecraft),
-                    format!("{} MODS", p.mods),
+                    match self.mods_ready {
+                        Some(true) => format!("{} MODS - READY", p.mods),
+                        Some(false) => format!("{} MODS - DOWNLOADING", p.mods),
+                        None => format!("{} MODS", p.mods),
+                    },
                 ),
                 None => ("LOADING...".into(), String::new()),
             };

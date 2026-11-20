@@ -1,2 +1,5 @@
-# Menma server address (read by the launcher)
+# Menma server addresses, one per line. The launcher pings all and joins the fastest.
+# Tailscale (direct, for friends who accepted the share):
+100.68.16.55
+# playit tunnel (works for everyone):
 dedication-rebound.tun.ply.gg

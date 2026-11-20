@@ -272,7 +272,11 @@ pub struct Options {
     pub workers: usize,
 }
 
+/// Background pre-download and Play may overlap; run syncs one after another.
+static SYNC_LOCK: Mutex<()> = Mutex::new(());
+
 pub fn sync(opts: &Options, tx: &Sender<Progress>) -> Result<Summary, SyncError> {
+    let _one_at_a_time = SYNC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let agent = http_agent();
     let _ = tx.send(Progress::Checking);
 

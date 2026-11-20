@@ -409,6 +409,26 @@ fn http_get_bytes(agent: &ureq::Agent, url: &str, limit: u64) -> Result<Vec<u8>,
 
 /// Downloads the skin of `uuid` and returns its 8x8 face (with hat layer) as
 /// `0xAARRGGBB` pixels, row-major.
+/// Ping every address at the same time and keep the one that answers fastest
+/// (e.g. a direct Tailscale address first, the playit tunnel as fallback).
+pub fn ping_fastest(addrs: &[String], timeout: Duration) -> Option<(String, Status)> {
+    let results: Vec<(String, Result<Status, String>)> = std::thread::scope(|s| {
+        let handles: Vec<_> = addrs
+            .iter()
+            .map(|a| s.spawn(move || (a.clone(), ping(a, timeout))))
+            .collect();
+        handles.into_iter().filter_map(|h| h.join().ok()).collect()
+    });
+    pick_fastest(results)
+}
+
+fn pick_fastest(results: Vec<(String, Result<Status, String>)>) -> Option<(String, Status)> {
+    results
+        .into_iter()
+        .filter_map(|(a, r)| r.ok().map(|s| (a, s)))
+        .min_by_key(|(_, s)| s.ping_ms)
+}
+
 pub fn fetch_head(uuid: &str) -> Result<[u32; 64], String> {
     let id: String = uuid.chars().filter(|&c| c != '-').collect();
     if id.is_empty() || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -507,6 +527,18 @@ fn face_from_rgba(rgba: &[u8], w: usize, h: usize) -> Result<[u32; 64], String> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fastest_route_wins_and_failures_are_skipped() {
+        let st = |ms| Status { ping_ms: ms, online: 0, max: 10, motd: String::new(), version: String::new(), players: vec![] };
+        let r = super::pick_fastest(vec![
+            ("tunnel".into(), Ok(st(520))),
+            ("100.68.16.55".into(), Ok(st(35))),
+            ("dead".into(), Err("timeout".into())),
+        ]);
+        assert_eq!(r.map(|(a, s)| (a, s.ping_ms)), Some(("100.68.16.55".into(), 35)));
+        assert!(super::pick_fastest(vec![("dead".into(), Err("x".into()))]).is_none());
+    }
+
     use super::*;
     use std::net::TcpListener;
 
