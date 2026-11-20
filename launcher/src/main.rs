@@ -1,3 +1,7 @@
+// A window app: no console window. Command-line modes (--sync, --host, --fetch)
+// attach to the terminal they were started from so their output still shows.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod config;
 mod host;
 mod prism;
@@ -12,6 +16,14 @@ pub const PACK_URL: &str =
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    #[cfg(windows)]
+    if args.iter().any(|a| a.starts_with("--") && a != "--demo") {
+        unsafe {
+            windows_sys::Win32::System::Console::AttachConsole(
+                windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS,
+            );
+        }
+    }
     // Host: `--host start` / `--host stop` (same as the launcher's server button).
     if let Some(i) = args.iter().position(|a| a == "--host") {
         let Some(dir) = host::host_dir() else {
