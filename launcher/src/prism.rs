@@ -157,6 +157,20 @@ pub fn prepare_instance(
         cfg = set_ini(&cfg, "MinMemAlloc", "1024");
         cfg = set_ini(&cfg, "MaxMemAlloc", &mem.to_string());
     }
+    // Java on some Windows PCs (VPN/network tools installed) fails with "failed to open
+    // a new selector" unless its internal socket files go to a short, simple folder.
+    let fix_dir = env_path("ProgramData")
+        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"))
+        .join("MenmaLauncher")
+        .join("tmp");
+    let _ = fs::create_dir_all(&fix_dir);
+    let args = read_ini_value(&cfg, "JvmArgs").unwrap_or_default();
+    if !args.contains("jdk.net.unixdomain.tmpdir") {
+        let flag = format!("-Djdk.net.unixdomain.tmpdir={}", fix_dir.display());
+        let joined = if args.trim().is_empty() { flag } else { format!("{} {flag}", args.trim()) };
+        cfg = set_ini(&cfg, "JvmArgs", &joined);
+        cfg = set_ini(&cfg, "OverrideJavaArgs", "true");
+    }
     // This launcher syncs the pack itself, so the packwiz pre-launch step is not needed.
     if read_ini_value(&cfg, "PreLaunchCommand").is_some_and(|c| c.contains("packwiz-installer")) {
         cfg = set_ini(&cfg, "PreLaunchCommand", "");
@@ -254,6 +268,11 @@ mod tests {
         assert!(!p.created);
         let cfg = fs::read_to_string(tmp.path().join("Menma/instance.cfg")).unwrap();
         assert!(cfg.contains("PreLaunchCommand=\n") && cfg.contains("MaxMemAlloc=2048"));
+        assert_eq!(cfg.matches("jdk.net.unixdomain.tmpdir").count(), 1, "network fix added once");
+        prepare_instance(tmp.path(), "1.21.1", Some("21.1.300")).unwrap();
+        let cfg = fs::read_to_string(tmp.path().join("Menma/instance.cfg")).unwrap();
+        assert_eq!(cfg.matches("jdk.net.unixdomain.tmpdir").count(), 1, "not added twice");
+        assert!(cfg.contains("OverrideJavaArgs=true"));
         let pack = fs::read_to_string(tmp.path().join("Menma/mmc-pack.json")).unwrap();
         assert!(pack.contains("21.1.300"));
     }
