@@ -13,7 +13,7 @@ sha2 = "0.11.1"
 softbuffer = "0.4.8"
 toml = "1.2.1"
 ureq = { version = "3.5.2", default-features = false, features = ["rustls", "platform-verifier", "gzip"] }
-windows-sys = { version = "0.61.2", features = ["Win32_System_SystemInformation", "Win32_Media_Audio", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Foundation", "Win32_NetworkManagement_Dns", "Win32_UI_Controls_Dialogs", "Win32_Graphics_Dwm"] }
+windows-sys = { version = "0.61.2", features = ["Win32_System_SystemInformation", "Win32_Media_Audio", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Foundation", "Win32_NetworkManagement_Dns", "Win32_UI_Controls_Dialogs", "Win32_Graphics_Dwm", "Win32_Security_Cryptography"] }
 winit = "0.30.13"
 
 [dev-dependencies]

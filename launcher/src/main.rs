@@ -1,4 +1,5 @@
 mod config;
+mod host;
 mod prism;
 mod server;
 mod sync;
@@ -11,6 +12,26 @@ pub const PACK_URL: &str =
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Host: `--host start` / `--host stop` (same as the launcher's server button).
+    if let Some(i) = args.iter().position(|a| a == "--host") {
+        let Some(dir) = host::host_dir() else {
+            println!("no server next to this launcher");
+            std::process::exit(2)
+        };
+        let report = |s: &str| println!("{s}");
+        let r = match args.get(i + 1).map(String::as_str) {
+            Some("stop") => host::stop(&dir, &report),
+            _ => host::start(&dir, PACK_URL, &report),
+        };
+        match r {
+            Ok(()) => println!("ok (server running: {})", host::server_running()),
+            Err(e) => {
+                println!("failed: {e}");
+                std::process::exit(1)
+            }
+        }
+        return;
+    }
     // Diagnostics: download one URL and report time/size (or the error).
     if let Some(i) = args.iter().position(|a| a == "--fetch") {
         let url = args.get(i + 1).cloned().unwrap_or_default();

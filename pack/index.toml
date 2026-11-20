@@ -1,15 +1,6 @@
 hash-format = "sha256"
 
 [[files]]
-file = "CustomSkinLoader/CustomSkinLoader.json"
-hash = "f29c2f0b8809be314393ded399fcf9a31a107cabeec9b6657eb3a48695f34650"
-
-[[files]]
-file = "mods/customskinloader.pw.toml"
-hash = "6dc69e48da9a2dadcce285602296efc868b9e429ff3c7cc7a4e99c5dcd10e61a"
-metafile = true
-
-[[files]]
 file = "mods/distanthorizons.pw.toml"
 hash = "6d37de7b436e094a7834d51b5d9d803653ab445e1041853f32a61599b054c7bf"
 metafile = true
@@ -42,6 +33,11 @@ metafile = true
 [[files]]
 file = "mods/modernfix.pw.toml"
 hash = "ef65836e005bd42a0f40df30a94eba1ad7ee5ed3194b11eafbeadc64edb44252"
+metafile = true
+
+[[files]]
+file = "mods/skinrestorer.pw.toml"
+hash = "e6c590903ab9902bcacfc92da2510cc289f1ccd93e27e997cabc12f9d1c4e550"
 metafile = true
 
 [[files]]

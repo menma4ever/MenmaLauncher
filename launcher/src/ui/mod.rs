@@ -91,7 +91,11 @@ pub struct App {
     heads: Vec<Head>,
     head_cache: HashMap<String, [u32; 64]>,
     want_heads: Sender<String>,
-    host_script: Option<PathBuf>,
+    host_dir: Option<PathBuf>,
+    host_tx: Sender<HostMsg>,
+    host_rx: Receiver<HostMsg>,
+    host_running: bool,
+    host_busy: bool,
     toast: Option<(String, f32)>,
     pack_url: String,
     demo: Option<demo::Kind>,
@@ -100,13 +104,20 @@ pub struct App {
     pending_launch: bool,
 }
 
-fn host_script() -> Option<PathBuf> {
-    // Only the host PC has the server next to the launcher's project folder.
-    let exe = std::env::current_exe().ok()?;
-    exe.ancestors().take(6).find_map(|d| {
-        let s = d.join("scripts").join("start-server.bat");
-        (s.is_file() && d.join("server").join("start.bat").is_file()).then_some(s)
-    })
+enum HostMsg {
+    Running(bool),
+    Stage(String),
+    Done(Result<(), String>),
+}
+
+/// Host PC only: report every 2 s whether our server is up (for the button label).
+fn spawn_host_watch(tx: Sender<HostMsg>) {
+    thread::spawn(move || loop {
+        if tx.send(HostMsg::Running(crate::host::server_running())).is_err() {
+            return;
+        }
+        thread::sleep(Duration::from_secs(2));
+    });
 }
 
 fn spawn_pack_info() -> Receiver<sync::PackInfo> {
@@ -163,7 +174,11 @@ impl App {
         sound::init();
         let config = Config::load();
         let prism_exe = prism::find(config.prism_exe.as_deref());
-        let host = host_script();
+        let host = crate::host::host_dir();
+        let (host_tx, host_rx) = mpsc::channel();
+        if host.is_some() {
+            spawn_host_watch(host_tx.clone());
+        }
         let (srv_rx, want_heads) = if demo == Some(demo::Kind::Server) {
             // Demo players are fed in by the script instead of a real server.
             let (_tx, rx) = mpsc::channel();
@@ -215,7 +230,11 @@ impl App {
             heads: Vec::new(),
             head_cache: HashMap::new(),
             want_heads,
-            host_script: host,
+            host_dir: host,
+            host_tx,
+            host_rx,
+            host_running: false,
+            host_busy: false,
             toast: None,
             pack_url,
             demo,
@@ -402,6 +421,35 @@ impl App {
         let released = std::mem::take(&mut self.released);
         let m = self.mouse;
         self.poll(t);
+        while let Ok(h) = self.host_rx.try_recv() {
+            match h {
+                HostMsg::Running(r) => self.host_running = r,
+                HostMsg::Stage(s) => self.toast = Some((s, t)),
+                HostMsg::Done(r) => {
+                    self.host_busy = false;
+                    match r {
+                        Ok(()) => {
+                            let msg = if self.host_running { "SERVER ONLINE" } else { "SERVER STOPPED" };
+                            self.toast = Some((msg.into(), t));
+                            sound::play(Sfx::Cheer);
+                        }
+                        Err(e) => {
+                            self.run = Run::Failed { msg: friendly(&e) };
+                            self.mascot.set(Mood::Worried, t);
+                            sound::play(Sfx::Error);
+                        }
+                    }
+                }
+            }
+        }
+        let (label, color) = match (self.host_busy, self.host_running) {
+            (true, true) => ("STOPPING...", GOLD),
+            (true, false) => ("STARTING...", GOLD),
+            (false, true) => ("STOP SERVER", RED),
+            (false, false) => ("START SERVER", TEAL),
+        };
+        self.btn_server.label = label.into();
+        self.btn_server.color = color;
 
         // ---- update ----
         match self.screen {
@@ -413,11 +461,29 @@ impl App {
                 if self.btn_prism.update(&m, released, dt) {
                     self.go(Screen::NeedPrism);
                 }
-                if self.host_script.is_some() && self.btn_server.update(&m, released, dt)
-                    && let Some(s) = &self.host_script {
-                        let _ = std::process::Command::new("cmd").arg("/c").arg(s).spawn();
-                        self.toast = Some(("STARTING SERVER + TUNNEL".into(), t));
-                    }
+                if self.host_dir.is_some()
+                    && self.btn_server.update(&m, released, dt)
+                    && !self.host_busy
+                    && let Some(dir) = self.host_dir.clone()
+                {
+                    // Start or stop the server + tunnel in the background, no windows.
+                    self.host_busy = true;
+                    let stopping = self.host_running;
+                    let tx = self.host_tx.clone();
+                    let pack_url = self.pack_url.clone();
+                    thread::spawn(move || {
+                        let report = |s: &str| {
+                            let _ = tx.send(HostMsg::Stage(s.to_string()));
+                        };
+                        let r = if stopping {
+                            crate::host::stop(&dir, &report)
+                        } else {
+                            crate::host::start(&dir, &pack_url, &report)
+                        };
+                        let _ = tx.send(HostMsg::Running(crate::host::server_running()));
+                        let _ = tx.send(HostMsg::Done(r));
+                    });
+                }
             }
             Screen::NeedPrism => {
                 if self.btn_select.update(&m, released, dt)
@@ -509,7 +575,7 @@ impl App {
                 }
             }
             self.btn_prism.draw(c, &m);
-            if self.host_script.is_some() {
+            if self.host_dir.is_some() {
                 self.btn_server.draw(c, &m);
             }
         } else {

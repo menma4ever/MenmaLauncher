@@ -7,3 +7,4 @@ launcher/target/
 test-demo/
 test-sync*/
 *.menma-part
+MenmaLauncher.exe
