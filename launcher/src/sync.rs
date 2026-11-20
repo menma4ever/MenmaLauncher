@@ -212,19 +212,32 @@ pub fn fresh_url(agent: &ureq::Agent, url: &str) -> String {
     if branch.len() == 40 && branch.chars().all(|c| c.is_ascii_hexdigit()) {
         return url.to_string(); // already a commit
     }
-    let api = format!("https://api.github.com/repos/{owner}/{repo}/commits/{branch}");
+    // Ask like `git ls-remote` does: no API rate limit and never cached.
+    let refs_url = format!("https://github.com/{owner}/{repo}.git/info/refs?service=git-upload-pack");
     let sha = agent
-        .get(&api)
-        .header("Accept", "application/vnd.github.sha")
+        .get(&refs_url)
         .call()
         .ok()
-        .and_then(|mut r| r.body_mut().read_to_string().ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit()));
+        .and_then(|mut r| r.body_mut().with_config().limit(4 * 1024 * 1024).read_to_string().ok())
+        .and_then(|body| branch_sha(&body, branch));
     match sha {
         Some(sha) => format!("https://raw.githubusercontent.com/{owner}/{repo}/{sha}/{path}"),
         None => url.to_string(),
     }
+}
+
+/// Find `<40-hex sha> refs/heads/<branch>` in a git "info/refs" advertisement.
+fn branch_sha(body: &str, branch: &str) -> Option<String> {
+    let needle = format!(" refs/heads/{branch}");
+    body.match_indices(&needle).find_map(|(i, _)| {
+        // The ref name must end right here (not e.g. "main-old").
+        let after = body[i + needle.len()..].chars().next();
+        if !matches!(after, None | Some('\n') | Some('\0')) {
+            return None;
+        }
+        let sha = body.get(i.checked_sub(40)?..i)?;
+        sha.chars().all(|c| c.is_ascii_hexdigit()).then(|| sha.to_ascii_lowercase())
+    })
 }
 
 /// One download with a fresh agent (used by the --fetch diagnostic).
@@ -591,6 +604,16 @@ pub fn sync_print(opts: &Options) -> Result<Summary, SyncError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_branch_sha_in_git_refs() {
+        let body = "001e# service=git-upload-pack\n0000\
+0155aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa HEAD\0multi_ack side-band-64k\n\
+003fbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb refs/heads/main-old\n\
+003fcccccccccccccccccccccccccccccccccccccccc refs/heads/main\n0000";
+        assert_eq!(branch_sha(body, "main").as_deref(), Some("cccccccccccccccccccccccccccccccccccccccc"));
+        assert_eq!(branch_sha(body, "dev"), None);
+    }
 
     #[test]
     fn github_raw_urls_are_split() {
